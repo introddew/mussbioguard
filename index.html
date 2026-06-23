@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="MUSSBIO-GUARD - Sistem Dashboard Monitoring Real-Time Gerusan Pilar Jembatan dengan Notifikasi Peringatan Dini terintegrasi sensor MPU-6050 dan ESP32." />
+  <meta name="keywords" content="gerusan jembatan, scour monitoring, MUSSBIO-GUARD, sensor IoT, peringatan dini" />
+  <meta property="og:title" content="MUSSBIO-GUARD | Dashboard Monitoring Gerusan Jembatan" />
+  <meta property="og:description" content="Real-time scour monitoring dashboard untuk infrastruktur jembatan" />
+  <title>MUSSBIO-GUARD | Dashboard Monitoring Gerusan Jembatan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ─── Header ─────────────────────────────────────────── -->
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <!-- Brand -->
+      <div class="brand" aria-label="MUSSBIO-GUARD Brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">MUSSBIO-GUARD</h1>
+          <span class="brand-subtitle">Sistem Monitoring Gerusan Jembatan</span>
+        </div>
+      </div>
+
+      <!-- Location Badge -->
+      <div class="location-badge" aria-label="Lokasi pemantauan">
+        <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+        <span>Jembatan Jepang, Kesesi, Pekalongan</span>
+      </div>
+
+      <!-- Connection & Status -->
+      <div class="header-right">
+        <!-- MQTT Connection Indicator -->
+        <div class="connection-indicator" id="connectionIndicator" role="status" aria-live="polite">
+          <div class="conn-dot" id="connDot"></div>
+          <span id="connLabel">Menghubungkan...</span>
+        </div>
+
+        <!-- Main Status Badge -->
+        <div class="status-badge" id="statusBadge" aria-label="Status kondisi gerusan" aria-live="assertive">
+          <div class="status-icon" id="statusIcon">
+            <i class="fa-solid fa-circle-check" id="statusIconEl" aria-hidden="true"></i>
+          </div>
+          <div class="status-text-group">
+            <span class="status-label" id="statusLabel">AMAN</span>
+            <span class="status-update" id="lastUpdate">Menunggu data...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── Main Content ───────────────────────────────────── -->
+  <main class="main-content" role="main">
+
+    <!-- ── Metrics Row ────────────────────────────────────── -->
+    <section class="metrics-section" aria-label="Metrik sensor real-time">
+      <!-- Card: Frekuensi Dominan -->
+      <article class="metric-card" id="card-fn" aria-label="Kartu frekuensi dominan">
+        <div class="metric-card-header">
+          <div class="metric-icon metric-icon--blue">
+            <i class="fa-solid fa-wave-square" aria-hidden="true"></i>
+          </div>
+          <div class="metric-trend" id="fnTrend" aria-label="Tren frekuensi">
+            <i class="fa-solid fa-minus" aria-hidden="true"></i>
+          </div>
+        </div>
+        <div class="metric-value-group">
+          <span class="metric-value" id="fnValue">--</span>
+          <span class="metric-unit">Hz</span>
+        </div>
+        <p class="metric-label">Frekuensi Dominan (f<sub>n</sub>)</p>
+        <div class="metric-progress-bar" aria-label="Posisi frekuensi terhadap ambang kritis">
+          <div class="metric-progress-fill" id="fnProgress"></div>
+          <div class="metric-progress-marker" id="fnMarkerF1" style="left: calc(15.2 / 35 * 100%)">
+            <span class="marker-label">f<sub>1</sub></span>
+          </div>
+          <div class="metric-progress-marker metric-progress-marker--red" id="fnMarkerF2" style="left: calc(22.4 / 35 * 100%)">
+            <span class="marker-label">f<sub>2</sub></span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card: Kedalaman Gerusan -->
+      <article class="metric-card" id="card-ds" aria-label="Kartu kedalaman gerusan estimasi">
+        <div class="metric-card-header">
+          <div class="metric-icon metric-icon--amber">
+            <i class="fa-solid fa-water" aria-hidden="true"></i>
+          </div>
+          <div class="metric-threshold-info" aria-label="Informasi ambang batas">
+            <span class="threshold-chip" id="dsThresholdChip">Aman</span>
+          </div>
+        </div>
+        <div class="metric-value-group">
+          <span class="metric-value" id="dsValue">--</span>
+          <span class="metric-unit">cm</span>
+        </div>
+        <p class="metric-label">Kedalaman Gerusan Est. (d<sub>s</sub>)</p>
+        <div class="ds-gauge" aria-label="Gauge kedalaman gerusan">
+          <div class="ds-gauge-fill" id="dsGaugeFill"></div>
+          <div class="ds-gauge-zones">
+            <span class="zone zone--green">0</span>
+            <span class="zone zone--amber">0.5</span>
+            <span class="zone zone--red">1.5+</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Card: Amplitudo Getaran -->
+      <article class="metric-card" id="card-amp" aria-label="Kartu amplitudo getaran">
+        <div class="metric-card-header">
+          <div class="metric-icon metric-icon--green">
+            <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+          </div>
+          <div class="metric-badge" id="ampBadge">
+            <i class="fa-solid fa-signal" aria-hidden="true"></i> Aktif
+          </div>
+        </div>
+        <div class="metric-value-group">
+          <span class="metric-value" id="ampValue">--</span>
+          <span class="metric-unit">g</span>
+        </div>
+        <p class="metric-label">Amplitudo Getaran</p>
+        <div class="amplitude-viz" id="amplitudeViz" aria-label="Visualisasi amplitudo">
+          <!-- Animated bars via JS -->
+        </div>
+      </article>
+
+      <!-- Card: Status Summary -->
+      <article class="metric-card metric-card--status" id="card-status" aria-label="Kartu ringkasan status">
+        <div class="metric-card-header">
+          <div class="metric-icon metric-icon--status" id="statusCardIcon">
+            <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          </div>
+          <div class="live-indicator" aria-label="Indikator data langsung">
+            <div class="live-dot"></div>
+            <span>LIVE</span>
+          </div>
+        </div>
+        <div class="status-summary" id="statusSummary">
+          <span class="status-summary-text" id="statusSummaryText">AMAN</span>
+        </div>
+        <p class="metric-label">Status Kondisi Pilar</p>
+        <div class="status-description" id="statusDescription">
+          Kondisi pilar dalam keadaan normal. Pemantauan rutin berlanjut.
+        </div>
+      </article>
+    </section>
+
+    <!-- ── Chart + Alert Panel ─────────────────────────────── -->
+    <section class="content-section" aria-label="Panel grafik dan riwayat peringatan">
+      <!-- Chart Panel -->
+      <div class="chart-panel">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <i class="fa-solid fa-chart-area" aria-hidden="true"></i>
+            <h2 class="panel-title">Grafik Frekuensi Dominan Real-Time</h2>
+          </div>
+          <div class="chart-controls">
+            <!-- Quick Preset Buttons -->
+            <div class="preset-group" role="group" aria-label="Preset status cepat">
+              <button class="preset-btn preset-btn--green" id="presetAman" title="Set kondisi AMAN">
+                <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+                AMAN
+              </button>
+              <button class="preset-btn preset-btn--amber" id="presetWaspada" title="Set kondisi WASPADA">
+                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                WASPADA
+              </button>
+              <button class="preset-btn preset-btn--red" id="presetKritis" title="Set kondisi KRITIS">
+                <i class="fa-solid fa-circle-radiation" aria-hidden="true"></i>
+                KRITIS
+              </button>
+            </div>
+            <!-- Simulation Toggle -->
+            <button class="ctrl-btn" id="simulationBtn" title="Aktifkan/nonaktifkan simulasi data">
+              <i class="fa-solid fa-flask" aria-hidden="true"></i>
+              <span id="simBtnLabel">Mulai Simulasi</span>
+            </button>
+            <button class="ctrl-btn ctrl-btn--ghost" id="clearChartBtn" title="Hapus grafik">
+              <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+              <span>Bersihkan</span>
+            </button>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="fnChart" role="img" aria-label="Grafik tren frekuensi dominan terhadap waktu"></canvas>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item">
+            <span class="legend-dot legend-dot--blue"></span>
+            <span>Frekuensi Dominan (fn)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line legend-line--amber"></span>
+            <span>f<sub>1</sub> = 15.2 Hz (Batas Waspada)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line legend-line--red"></span>
+            <span>f<sub>2</sub> = 22.4 Hz (Batas Kritis)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alert Log Panel -->
+      <div class="alert-panel">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <i class="fa-solid fa-bell" aria-hidden="true"></i>
+            <h2 class="panel-title">Riwayat Peringatan</h2>
+          </div>
+          <div class="alert-count-badge" id="alertCount" aria-label="Jumlah peringatan">0</div>
+        </div>
+        <div class="alert-list" id="alertList" role="log" aria-live="polite" aria-label="Daftar riwayat peringatan">
+          <!-- Empty state -->
+          <div class="alert-empty" id="alertEmpty">
+            <i class="fa-solid fa-bell-slash" aria-hidden="true"></i>
+            <p>Belum ada peringatan.</p>
+            <span>Sistem berjalan normal.</span>
+          </div>
+        </div>
+        <div class="alert-panel-footer">
+          <button class="clear-alerts-btn" id="clearAlertsBtn" title="Hapus semua riwayat peringatan">
+            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+            Hapus Riwayat
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Emergency Response & Map Panel ─────────────────── -->
+    <section class="emergency-section" aria-label="Panel tanggap darurat dan peta" id="emergencySection">
+      <!-- Map Panel -->
+      <div class="map-panel">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>
+            <h2 class="panel-title">Peta Lokasi & Posko Evakuasi</h2>
+          </div>
+        </div>
+        <div class="map-container" id="map" aria-label="Peta interaktif lokasi jembatan dan posko">
+          <!-- Leaflet Map will be rendered here -->
+        </div>
+      </div>
+
+      <!-- Emergency Contacts Panel -->
+      <div class="contacts-panel">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <i class="fa-solid fa-truck-medical" aria-hidden="true"></i>
+            <h2 class="panel-title">Aksi Tanggap Darurat</h2>
+          </div>
+        </div>
+        <div class="contacts-content">
+          <p class="contacts-desc">Pusat panggilan darurat dan pelaporan cepat saat status Kritis.</p>
+          
+          <div class="contact-actions">
+            <!-- WA Lapor BNPB/BPBD -->
+            <button class="action-btn action-btn--wa" id="btnReportBPBD" title="Kirim WhatsApp ke BPBD">
+              <div class="action-btn-icon"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></div>
+              <div class="action-btn-text">
+                <span class="action-title">Lapor BPBD Pekalongan</span>
+                <span class="action-sub">Kirim laporan otomatis via WhatsApp</span>
+              </div>
+            </button>
+            
+            <!-- Call BNPB -->
+            <a href="tel:117" class="action-btn action-btn--call" id="btnCallBNPB" title="Telepon Call Center 117">
+              <div class="action-btn-icon"><i class="fa-solid fa-phone" aria-hidden="true"></i></div>
+              <div class="action-btn-text">
+                <span class="action-title">Call Center BNPB (117)</span>
+                <span class="action-sub">Panggilan darurat nasional</span>
+              </div>
+            </a>
+            
+            <!-- Call Dinas PU -->
+            <button class="action-btn action-btn--call" id="btnCallPU" title="Hubungi Dinas PU">
+              <div class="action-btn-icon"><i class="fa-solid fa-bridge" aria-hidden="true"></i></div>
+              <div class="action-btn-text">
+                <span class="action-title">Dinas PU Binamarga</span>
+                <span class="action-sub">Laporkan kerusakan infrastruktur</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Info Footer Strip ──────────────────────────────── -->
+    <section class="info-strip" aria-label="Informasi teknis sistem">
+      <div class="info-item">
+        <i class="fa-solid fa-microchip" aria-hidden="true"></i>
+        <span class="info-label">Sensor</span>
+        <span class="info-value">MPU-6050 via ESP32</span>
+      </div>
+      <div class="info-separator" aria-hidden="true"></div>
+      <div class="info-item">
+        <i class="fa-brands fa-connectdevelop" aria-hidden="true"></i>
+        <span class="info-label">Protokol</span>
+        <span class="info-value">MQTT + Socket.io</span>
+      </div>
+      <div class="info-separator" aria-hidden="true"></div>
+      <div class="info-item">
+        <i class="fa-solid fa-database" aria-hidden="true"></i>
+        <span class="info-label">Data Buffer</span>
+        <span class="info-value" id="infoDataPoints">0 / 100 titik</span>
+      </div>
+      <div class="info-separator" aria-hidden="true"></div>
+      <div class="info-item">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        <span class="info-label">Ambang f<sub>1</sub></span>
+        <span class="info-value" id="infoF1">15.2 Hz</span>
+      </div>
+      <div class="info-separator" aria-hidden="true"></div>
+      <div class="info-item">
+        <i class="fa-solid fa-circle-radiation" aria-hidden="true"></i>
+        <span class="info-label">Ambang f<sub>2</sub></span>
+        <span class="info-value" id="infoF2">22.4 Hz</span>
+      </div>
+      <div class="info-separator" aria-hidden="true"></div>
+      <div class="info-item">
+        <i class="fa-brands fa-telegram" aria-hidden="true"></i>
+        <span class="info-label">Notifikasi</span>
+        <span class="info-value">Telegram Bot</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ─── Critical Alert Modal Overlay ─────────────────────── -->
+  <div class="critical-overlay" id="criticalOverlay" role="alertdialog" aria-modal="true" aria-labelledby="criticalModalTitle" aria-describedby="criticalModalDesc" hidden>
+    <div class="critical-modal">
+      <div class="critical-modal-icon">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      </div>
+      <h2 class="critical-modal-title" id="criticalModalTitle">PERINGATAN KRITIS!</h2>
+      <p class="critical-modal-desc" id="criticalModalDesc">
+        Kondisi gerusan telah mencapai tingkat kritis. Tindakan segera diperlukan.
+      </p>
+      <div class="critical-modal-data" id="criticalModalData"></div>
+      <div class="critical-modal-actions">
+        <div class="critical-action-buttons">
+          <button class="modal-action-btn modal-action-btn--primary" id="modalBtnWa">
+            <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+            Kirim Laporan WA Darurat
+          </button>
+          <button class="modal-action-btn modal-action-btn--secondary" id="modalBtnMap">
+            <i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>
+            Lihat Peta Evakuasi
+          </button>
+        </div>
+      </div>
+      <button class="critical-dismiss-btn" id="criticalDismissBtn">
+        <i class="fa-solid fa-check" aria-hidden="true"></i>
+        Saya Mengerti &mdash; Ambil Tindakan
+      </button>
+    </div>
+  </div>
+
+  <!-- ─── Toast Notifications ───────────────────────────────── -->
+  <div class="toast-container" id="toastContainer" role="region" aria-label="Notifikasi sistem" aria-live="polite"></div>
+
+  <!-- ─── Scripts ───────────────────────────────────────────── -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
